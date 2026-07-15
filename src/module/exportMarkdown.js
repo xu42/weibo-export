@@ -26,6 +26,18 @@ const formatDate = function (dateString, showSecond = true) {
       .join(":")
 }
 
+const formatDateCompact = function (dateString) {
+  const date = new Date(dateString)
+  return [
+    date.getFullYear(),
+    fillWithZero(date.getMonth() + 1),
+    fillWithZero(date.getDate()),
+    fillWithZero(date.getHours()),
+    fillWithZero(date.getMinutes()),
+    fillWithZero(date.getSeconds()),
+  ].join("")
+}
+
 const sanitizeFileName = function (value) {
   return (value || "speechless-export")
     .replace(/[\\/:*?"<>|]/g, "_")
@@ -109,7 +121,7 @@ const downloadImages = async function (posts) {
     const images = extractPostImages(post)
 
     for (const image of images) {
-      const basename = `post-${fillWithZero(postIndex + 1)}-${fillWithZero(
+      const basename = `post-${formatDateCompact(post.created_at)}-${fillWithZero(
         image.index + 1
       )}.${image.extension}`
       const path = `images/${basename}`
@@ -163,7 +175,7 @@ const buildMarkdown = function ({ posts, username, imageEntries }) {
 
   posts.forEach((post, index) => {
     const postLines = []
-    postLines.push(`## ${index + 1}. ${formatDate(post.created_at)}`)
+    postLines.push(`## ${formatDate(post.created_at)}`)
 
     if (post.region_name) {
       postLines.push("")
