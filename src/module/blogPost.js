@@ -20,14 +20,23 @@ let interval = 1000
 let lastFetchTimeStamp = 0
 
 const delay = function (timeout) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     setTimeout(resolve, timeout)
   })
 }
 
-// 每添加一个卡片，就要更新一次页面的状态
+const resetState = function () {
+  page = 1
+  total = 0
+  count = 0
+  loadMore = true
+  _uid = ""
+  _sourceType = 1
+  speechlessListEL = null
+  lastFetchTimeStamp = 0
+}
+
 const updateWholePageState = function () {
-  window.scrollTo(0, document.body.scrollHeight)
   count++
   _callback({
     type: "count",
@@ -35,26 +44,22 @@ const updateWholePageState = function () {
   })
 }
 
-// 把页面上的其他元素移除，并且初始化挂载节点
 const generateHTML = function () {
-  document.getElementById("app").remove()
+  const sourceRoot = document.getElementById("app")
+  if (sourceRoot) {
+    sourceRoot.remove()
+  }
+
+  const existedList = document.querySelector(".speechless-list")
+  if (existedList) {
+    existedList.remove()
+  }
+
   speechlessListEL = document.createElement("div")
   speechlessListEL.classList = "speechless-list speechless-list-small"
   document.body.append(speechlessListEL)
 }
 
-const appendSpeechless = function () {
-  let dateString = getDate(new Date())
-  let speechlessHtml = `
-   ${dateString} 使用 <a href="https://speechless.fun" target="_blank">&hearts; Speechless</a> 导出
-  `
-  let node = document.createElement("div")
-  node.className = "speechless-corpyright"
-  node.innerHTML = speechlessHtml
-  speechlessListEL.appendChild(node)
-}
-
-// 格式化时间
 const getDate = function (dateString, showSecond) {
   let date = new Date(dateString)
   let hour = date.getHours()
@@ -83,8 +88,7 @@ const getDate = function (dateString, showSecond) {
   )
 }
 
-// 过滤多余的换行
-const clearLineBreak = function (text) {
+const clearLineBreak = function (text = "") {
   let textClear = text.replace(/\n/g, "<br/>")
   textClear = textClear.replace(/(<br\s?\/>){3,}/g, "<br/><br/>")
   return textClear
@@ -109,63 +113,72 @@ const combineImageHtml = function (image, size) {
   return str
 }
 
-// 把卡片添加到页面中
-const appendPostToBody = function (post) {
-  if (_sourceType == 1 && (post.retweeted_status || post.user.id != _uid)) {
-  } else {
-    let metaHTML = ""
+const shouldKeepPost = function (post) {
+  if (post.user.id != _uid) {
+    return false
+  }
 
-    metaHTML += `<div class="meta">
+  if (_sourceType == 1 && post.retweeted_status) {
+    return false
+  }
+
+  return true
+}
+
+const appendPostToBody = function (post) {
+  let metaHTML = ""
+
+  metaHTML += `<div class="meta">
                 <div class="meta-info">
                     <span class="date">${getDate(post.created_at)}</span>`
-    if (post.region_name) {
-      metaHTML += `<div class="region">${post.region_name.replace(
-        "发布于 ",
-        ""
-      )}</div>`
-    }
-    metaHTML += `</div></div>`
-
-    let textHTML = `<div class="text">${clearLineBreak(
-      post.long_text_source || post.text || post.page_info?.page_title
+  if (post.region_name) {
+    metaHTML += `<div class="region">${post.region_name.replace(
+      "发布于 ",
+      ""
     )}</div>`
+  }
+  metaHTML += `</div></div>`
 
-    let retweetHTML = ""
-    if (post.retweeted_status && post.retweeted_status.user) {
-      retweetHTML += `<div class="retweet">`
-      retweetHTML += `${
-        post.retweeted_status.user.screen_name
-          ? post.retweeted_status.user.screen_name
-          : ""
-      }<span style="margin:0 3px;">:</span>${clearLineBreak(
-        post.retweeted_status.long_text_source || post.retweeted_status.text
-      )}`
-      retweetHTML += `</div>`
+  let textHTML = `<div class="text">${clearLineBreak(
+    post.long_text_source || post.text || post.page_info?.page_title || ""
+  )}</div>`
+
+  let retweetHTML = ""
+  if (post.retweeted_status && post.retweeted_status.user) {
+    retweetHTML += `<div class="retweet">`
+    retweetHTML += `${
+      post.retweeted_status.user.screen_name
+        ? post.retweeted_status.user.screen_name
+        : ""
+    }<span style="margin:0 3px;">:</span>${clearLineBreak(
+      post.retweeted_status.long_text_source || post.retweeted_status.text || ""
+    )}`
+    retweetHTML += `</div>`
+  }
+
+  let mediaHTML = ""
+
+  if (post.pic_infos) {
+    mediaHTML += '<div class="media media-small">'
+    for (let key in post.pic_infos) {
+      mediaHTML += combineImageHtml(post.pic_infos[key].large, 160)
     }
+    mediaHTML += "</div>"
 
-    let mediaHTML = ""
-
-    if (post.pic_infos) {
-      mediaHTML += '<div class="media media-small">'
-      for (let key in post.pic_infos) {
-        mediaHTML += combineImageHtml(post.pic_infos[key].large, 160)
-      }
-      mediaHTML += "</div>"
-
-      mediaHTML += '<div class="media media-medium">'
-      for (let key in post.pic_infos) {
-        mediaHTML += combineImageHtml(post.pic_infos[key].large, 320)
-      }
-      mediaHTML += "</div>"
-
-      mediaHTML += '<div class="media media-large">'
-      for (let key in post.pic_infos) {
-        mediaHTML += combineImageHtml(post.pic_infos[key].large, 500)
-      }
-      mediaHTML += "</div>"
+    mediaHTML += '<div class="media media-medium">'
+    for (let key in post.pic_infos) {
+      mediaHTML += combineImageHtml(post.pic_infos[key].large, 320)
     }
+    mediaHTML += "</div>"
 
-    let postHTML = `
+    mediaHTML += '<div class="media media-large">'
+    for (let key in post.pic_infos) {
+      mediaHTML += combineImageHtml(post.pic_infos[key].large, 500)
+    }
+    mediaHTML += "</div>"
+  }
+
+  let postHTML = `
         ${metaHTML}
         <div class="main">
         ${textHTML}
@@ -173,23 +186,25 @@ const appendPostToBody = function (post) {
         ${mediaHTML}            
         </div>`
 
-    let node = document.createElement("div")
-    node.className = "speechless-post"
-    node.innerHTML = postHTML
+  let node = document.createElement("div")
+  node.className = "speechless-post"
+  node.innerHTML = postHTML
 
-    speechlessListEL.appendChild(node)
-  }
-
-  updateWholePageState()
+  speechlessListEL.appendChild(node)
 }
-const fetchWithRetry = async function (
-  GetPostsByRangeApiURL,
-  parameters,
-  retries = 3
-) {
+
+const renderPosts = function (posts) {
+  posts.forEach((post) => {
+    appendPostToBody(post)
+    updateWholePageState()
+  })
+  window.scrollTo(0, document.body.scrollHeight)
+}
+
+const fetchWithRetry = async function (apiURL, parameters, retries = 3) {
   while (retries > 0) {
     try {
-      const response = await axios.get(GetPostsByRangeApiURL, parameters)
+      const response = await axios.get(apiURL, parameters)
       return response
     } catch (error) {
       console.error(`Fetch failed, ${retries - 1} retries left: `, error)
@@ -199,7 +214,6 @@ const fetchWithRetry = async function (
   throw new Error("Maximum retries reached, request failed")
 }
 
-// 拉取数据，并且格式化
 const doFetch = async function (parameters) {
   if (!parameters) parameters = {}
 
@@ -217,12 +231,10 @@ const doFetch = async function (parameters) {
 
   try {
     let resp = fetchResp.data.data
-    let list = resp.list
     _callback({
       type: "total",
       value: resp.total,
     })
-    await formatPosts(list, parameters.uid)
     return resp
   } catch (err) {
     console.error(err)
@@ -230,12 +242,12 @@ const doFetch = async function (parameters) {
   }
 }
 
-// 处理每一批的列表
 const formatPosts = async function (posts, uid) {
-  let _list = []
+  let list = []
 
   for (let post of posts) {
     if (post.user.id != uid) continue
+
     if (!!post.isLongText) {
       try {
         let offset = parseInt(new Date().valueOf()) - lastFetchTimeStamp
@@ -247,11 +259,11 @@ const formatPosts = async function (posts, uid) {
         lastFetchTimeStamp = parseInt(new Date().getTime())
         let longtextData = await fetchLongText(post.mblogid)
         post.long_text_source = longtextData.longTextContent || ""
-        console.log(post)
       } catch (err) {
         console.error(err)
       }
     }
+
     if (post.retweeted_status && post.retweeted_status.isLongText) {
       try {
         let offset = parseInt(new Date().valueOf()) - lastFetchTimeStamp
@@ -260,6 +272,7 @@ const formatPosts = async function (posts, uid) {
           console.log(`Delay of ${delayMS} milliseconds`)
           await delay(delayMS)
         }
+        lastFetchTimeStamp = parseInt(new Date().getTime())
         let longtextData = await fetchLongText(post.retweeted_status.mblogid)
         post.retweeted_status.long_text_source =
           longtextData.longTextContent || ""
@@ -267,11 +280,21 @@ const formatPosts = async function (posts, uid) {
         console.error(err)
       }
     }
-    appendPostToBody(post)
-    _list.push(post)
+
+    if (shouldKeepPost(post)) {
+      list.push(post)
+    }
   }
 
-  return _list
+  return list
+}
+
+const sortPosts = function (posts, sortType) {
+  return [...posts].sort((a, b) => {
+    const timeA = new Date(a.created_at).getTime()
+    const timeB = new Date(b.created_at).getTime()
+    return sortType == 1 ? timeA - timeB : timeB - timeA
+  })
 }
 
 function getLastDayTimestamp(obj) {
@@ -292,6 +315,7 @@ function getFirstDayTimestamp(obj) {
   let stamp = Math.floor(firstDayTimestamp / 1000)
   return stamp
 }
+
 const fetchLongText = async function (postid) {
   let longTextResp = await axios.get(GetLongTextURL, {
     params: {
@@ -306,14 +330,13 @@ const fetchLongText = async function (postid) {
   }
 }
 
-// 拉取主要函数
 export const fetchPost = async function (parameters, callback) {
+  resetState()
   _callback = callback
 
-  console.log(parameters)
   generateHTML()
 
-  let { uid, sourceType, rangeType, range } = parameters
+  let { uid, sourceType, sortType = 0, rangeType, range } = parameters
 
   _uid = uid
   _sourceType = sourceType
@@ -331,16 +354,19 @@ export const fetchPost = async function (parameters, callback) {
     }
   }
 
+  let posts = []
+
   while (loadMore) {
     requestParam.page = page
     let respData = await doFetch(requestParam)
-    console.log(respData)
+
     if (!respData) {
-      // 如果是接口报错了，什么都不干，继续 page ++
       console.log("接口报错了")
     } else {
       if (respData?.list?.length > 0) {
         total = respData.total
+        const formattedPosts = await formatPosts(respData.list, uid)
+        posts = posts.concat(formattedPosts)
         console.log("继续拉")
       } else {
         loadMore = false
@@ -350,5 +376,11 @@ export const fetchPost = async function (parameters, callback) {
     page++
   }
 
-  appendSpeechless()
+  const sortedPosts = sortPosts(posts, sortType)
+  renderPosts(sortedPosts)
+
+  return {
+    posts: sortedPosts,
+    total,
+  }
 }

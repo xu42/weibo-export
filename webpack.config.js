@@ -1,9 +1,10 @@
 const path = require("path")
 const { VueLoaderPlugin } = require('vue-loader')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const tailwindcss = require('tailwindcss')
+const autoprefixer = require('autoprefixer')
 
 module.exports = {
-    watch:true,
     entry: {
         index: path.resolve(__dirname, "src", "main.js")
     },
@@ -23,7 +24,18 @@ module.exports = {
                 use: [
                     'vue-style-loader',
                     'css-loader',
-                    'postcss-loader'
+                    {
+                        loader: 'postcss-loader',
+                        options: {
+                            postcssOptions: {
+                                config: false,
+                                plugins: [
+                                    tailwindcss(),
+                                    autoprefixer(),
+                                ],
+                            },
+                        },
+                    }
                 ]
             }
         ]
